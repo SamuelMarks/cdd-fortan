@@ -1,0 +1,99 @@
+# ==============================================================================
+# cdd-fortran — pre-commit Configuration (https://pre-commit.com)
+#
+# Hermetic local PyPI `pre-commit` hooks (zero network clones required):
+#   1. Repository hygiene (merge conflicts, case collisions, symlinks, file size,
+#      JSON/TOML syntax, executable shebangs).
+#   2. Auto-code-format fix (`--fix`, like `cargo fmt`) followed immediately by
+#      a strict code-format verification recheck (`--check`).
+#   3. Build of SDK, CLI executable, and test suites under strict `-Werror`.
+#   4. Linting of Fortran, Python (`ruff`), Shell (`shellcheck`), GitHub Actions
+#      (`actionlint`), manifests, and 100% Doxygen + AST doc coverage.
+#   5. Full `CTest` execution across all Fortran & Python test suites.
+#   6. Automatic calculation and add/update of `% doc coverage` and
+#      `% test coverage` shields in `README.md`.
+#   7. `pre-push` safety blocker preventing accidental `git push`.
+# ==============================================================================
+
+minimum_pre_commit_version: '3.2.0'
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+default_stages:
+  - pre-commit
+fail_fast: false
+
+repos:
+  - repo: local
+    hooks:
+      - id: repo-hygiene
+        name: Check repository & manifest hygiene
+        entry: python3 -B scripts/precommit_tasks.py hygiene
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: code-format-fix
+        name: Auto-format code (fix)
+        entry: python3 -B scripts/format_code.py --fix
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: code-format-check
+        name: Check code formatting (recheck)
+        entry: python3 -B scripts/format_code.py --check
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: build
+        name: Build SDK, CLI & tests (-Werror)
+        entry: python3 -B scripts/precommit_tasks.py build
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: lint
+        name: Lint Fortran, manifests, scripts & Doxygen
+        entry: python3 -B scripts/precommit_tasks.py lint
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: test
+        name: Run CTest test suite
+        entry: python3 -B scripts/precommit_tasks.py test
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: doc-coverage-shield
+        name: "Add/update '% doc coverage' shield in README.md"
+        entry: python3 -B scripts/update_coverage_shields.py doc --readme README.md --build-dir build
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: test-coverage-shield
+        name: "Add/update '% test coverage' shield in README.md"
+        entry: python3 -B scripts/update_coverage_shields.py test --readme README.md --build-dir build
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-commit]

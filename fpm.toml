@@ -1,0 +1,100 @@
+name = "cdd-fortran"
+version = "0.1.0"
+license = "Apache-2.0 OR MIT"
+author = "cdd-fortran contributors"
+maintainer = "cdd-fortran contributors"
+copyright = "Copyright 2026 cdd-fortran contributors"
+description = "Self-hosted Fortran SDK & CLI for bidirectional JSON <-> Fortran UDT conversion, zero-dep codecs, and trivia-preserving surgical sync across FORTRAN I through Fortran 2023."
+categories = ["json", "codegen", "parser", "cli", "fortran"]
+keywords = ["fortran", "json", "json-schema", "cst", "codegen", "udt"]
+
+[build]
+auto-executables = false
+auto-tests = false
+module-naming = false
+
+[fortran]
+implicit-typing = false
+implicit-external = false
+source-form = "free"
+
+[library]
+source-dir = "src"
+
+[[executable]]
+name = "cdd-fortran"
+source-dir = "app"
+main = "main.f90"
+
+[[test]]
+name = "doc_coverage_audit"
+source-dir = "test"
+main = "doc_coverage_audit.f90"
+
+[[test]]
+name = "test_errors_and_strings"
+source-dir = "test"
+main = "test_errors_and_strings.f90"
+
+[[test]]
+name = "test_standard_registry"
+source-dir = "test"
+main = "test_standard_registry.f90"
+
+[[test]]
+name = "test_json_suite"
+source-dir = "test"
+main = "test_json_suite.f90"
+
+[[test]]
+name = "test_ir_and_namemap"
+source-dir = "test"
+main = "test_ir_and_namemap.f90"
+
+[[test]]
+name = "test_cst_roundtrip"
+source-dir = "test"
+main = "test_cst_roundtrip.f90"
+
+[[test]]
+name = "test_emit_udt_standards"
+source-dir = "test"
+main = "test_emit_udt_standards.f90"
+
+[[test]]
+name = "test_extract_udt_standards"
+source-dir = "test"
+main = "test_extract_udt_standards.f90"
+
+[[test]]
+name = "test_emit_codec_standards"
+source-dir = "test"
+main = "test_emit_codec_standards.f90"
+
+[[test]]
+name = "test_codec_runtime_compile"
+source-dir = "test"
+main = "test_codec_runtime_compile.f90"
+
+[[test]]
+name = "test_patch_udt_trivia"
+source-dir = "test"
+main = "test_patch_udt_trivia.f90"
+
+[[test]]
+name = "test_cli_suite"
+source-dir = "test"
+main = "test_cli_suite.f90"
+
+[profiles.release]
+compiler = "gfortran"
+flags = "-std=f2023 -frecursive -O2 -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
+
+[profiles.debug]
+compiler = "gfortran"
+flags = "-std=f2023 -frecursive -g -O0 -fcheck=all -fbacktrace -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
+
+[profiles.coverage]
+compiler = "gfortran"
+flags = "-std=f2023 -frecursive -g -O0 --coverage -fprofile-arcs -ftest-coverage -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
+link-time-flags = "--coverage"

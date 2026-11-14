@@ -1,0 +1,282 @@
+# ==============================================================================
+# cdd-fortran — Root .gitignore
+# Covers Fortran (FORTRAN I .. Fortran 2023), CMake, Ninja, CTest, fpm, Doxygen,
+# gcov/lcov/llvm-cov, Python helper tooling, IDEs, OS metadata, and releases.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Build, Install & Staging Directories
+# ------------------------------------------------------------------------------
+build/
+build-*/
+_build/
+cmake-build-*/
+out/
+dist/
+install/
+release/
+artifacts/
+stage/
+
+# ------------------------------------------------------------------------------
+# Fortran Compilers, Modules, Preprocessor & Runtime Artifacts
+# (gfortran, ifx/ifort, flang/amdflang, nvfortran/pgfortran, nagfor, lfortran, xlf)
+# ------------------------------------------------------------------------------
+# Compiled module & submodule interface files
+*.mod
+*.smod
+*.mod0
+*.rmod
+*__genmod.f90
+*__genmod.mod
+
+# Object files
+*.o
+*.obj
+*.lo
+*.ko
+*.elf
+
+# Static & shared libraries / import libs
+*.a
+*.la
+*.lai
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.def
+*.exp
+*.ilk
+
+# Executables & debug symbol bundles
+*.exe
+*.out
+*.app
+*.pdb
+*.idb
+*.dSYM/
+/cdd-fortran
+
+# Preprocessed Fortran, assembly, IR & compiler optimization reports
+*.i
+*.i90
+*.lst
+*.optrpt
+*.su
+*.s
+*.S
+*.bc
+*.ll
+
+# Unconnected Fortran scratch/unit files & crash dumps
+fort.[0-9]*
+core
+!/src/core/
+core.*
+vgcore.*
+
+# ------------------------------------------------------------------------------
+# Fortran Package Manager (fpm)
+# ------------------------------------------------------------------------------
+.fpm/
+fpm-scratch/
+
+# ------------------------------------------------------------------------------
+# CMake, Ninja, Make & CTest
+# ------------------------------------------------------------------------------
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+CMakeUserPresets.json
+cmake_install.cmake
+install_manifest.txt
+install_manifest_*.txt
+compile_commands.json
+CTestTestfile.cmake
+CTestCustom.cmake
+DartConfiguration.tcl
+Testing/
+_deps/
+_CPack_Packages/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
+
+# ------------------------------------------------------------------------------
+# Code Coverage, Sanitizers & Profiling
+# (gcov, lcov, gcovr, llvm-cov, gprof, perf, valgrind)
+# ------------------------------------------------------------------------------
+coverage/
+htmlcov/
+lcov-report/
+*.gcno
+*.gcda
+*.gcov
+*.gcov.json.gz
+*.profraw
+*.profdata
+*.info
+coverage*.xml
+coverage*.json
+gmon.out
+perf.data
+perf.data.old
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+asan.log.*
+ubsan.log.*
+lsan.log.*
+tsan.log.*
+
+# ------------------------------------------------------------------------------
+# Documentation Generators (Doxygen, FORD)
+# ------------------------------------------------------------------------------
+docs/
+doc/html/
+doc/latex/
+doc/xml/
+doc/man/
+doc/rtf/
+doxygen_sqlite3.db
+doxygen_objdb_*.tmp
+doxygen_entrydb_*.tmp
+
+# ------------------------------------------------------------------------------
+# Python Tooling, Linters & Virtual Environments
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# ------------------------------------------------------------------------------
+# Release Archives, Packages & Checksums
+# ------------------------------------------------------------------------------
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
+*.txz
+*.tar.bz2
+*.tbz2
+*.tar.zst
+*.zip
+*.7z
+*.deb
+*.rpm
+*.apk
+*.dmg
+*.pkg
+*.msi
+*.sha256
+*.sha512
+*.sig
+*.asc
+SHA256SUMS
+SHA256SUMS.txt
+checksums.txt
+
+# ------------------------------------------------------------------------------
+# Editors, IDEs, Language Servers & Tag Indexes
+# ------------------------------------------------------------------------------
+# Fortran Language Server & clangd caches
+.fortls_cache/
+.cache/
+.clangd/
+
+# VS Code (ignore workspace state, allow shared team configs if added)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# JetBrains (CLion, PyCharm, IntelliJ)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio & Xcode
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# Vim / Neovim / Emacs / Sublime / Helix
+*.swp
+*.swo
+*.swn
+*~
+.#*
+#*#
+*.elc
+auto-save-list/
+*.sublime-workspace
+*.sublime-project
+
+# ctags / etags / GNU Global
+tags
+TAGS
+!TAGS/
+GPATH
+GRTAGS
+GTAGS
+
+# ------------------------------------------------------------------------------
+# Environment Secrets, Temporary Files & OS Metadata
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+Icon?
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# Linux
+.directory
+.Trash-*
+.nfs*

@@ -1,0 +1,189 @@
+# ==============================================================================
+# cdd-fortran — Root .gitattributes
+# Enforces deterministic LF line endings for byte-exact CST/JSON testing across
+# OSes, configures Git Fortran diff drivers & GitHub Linguist classification,
+# protects binary formats, and keeps `git archive` release tarballs clean.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Default Behavior: Normalize Text Files to LF on Commit & Checkout
+# ------------------------------------------------------------------------------
+* text=auto eol=lf
+
+# ------------------------------------------------------------------------------
+# Fortran Source Files (FORTRAN I .. Fortran 2023)
+# Uses Git's built-in `fortran` diff driver and forces GitHub Linguist=Fortran
+# (prevents `.f`/`.for`/`.inc` misclassification as Forth/PHP/Pawn).
+# ------------------------------------------------------------------------------
+# Free-form & modern Fortran (Fortran 90 / 95 / 2003 / 2008 / 2018 / 2023)
+*.f90  text eol=lf diff=fortran linguist-language=Fortran
+*.F90  text eol=lf diff=fortran linguist-language=Fortran
+*.f95  text eol=lf diff=fortran linguist-language=Fortran
+*.F95  text eol=lf diff=fortran linguist-language=Fortran
+*.f03  text eol=lf diff=fortran linguist-language=Fortran
+*.F03  text eol=lf diff=fortran linguist-language=Fortran
+*.f08  text eol=lf diff=fortran linguist-language=Fortran
+*.F08  text eol=lf diff=fortran linguist-language=Fortran
+*.f18  text eol=lf diff=fortran linguist-language=Fortran
+*.F18  text eol=lf diff=fortran linguist-language=Fortran
+*.f23  text eol=lf diff=fortran linguist-language=Fortran
+*.F23  text eol=lf diff=fortran linguist-language=Fortran
+
+# Fixed-form & historical FORTRAN (FORTRAN I / II / III / IV / 66 / 77)
+*.f    text eol=lf diff=fortran linguist-language=Fortran
+*.F    text eol=lf diff=fortran linguist-language=Fortran
+*.for  text eol=lf diff=fortran linguist-language=Fortran
+*.FOR  text eol=lf diff=fortran linguist-language=Fortran
+*.ftn  text eol=lf diff=fortran linguist-language=Fortran
+*.FTN  text eol=lf diff=fortran linguist-language=Fortran
+*.f66  text eol=lf diff=fortran linguist-language=Fortran
+*.F66  text eol=lf diff=fortran linguist-language=Fortran
+*.f77  text eol=lf diff=fortran linguist-language=Fortran
+*.F77  text eol=lf diff=fortran linguist-language=Fortran
+
+# Preprocessed Fortran (`fypp` / CPP) & Fortran include headers
+*.fpp  text eol=lf diff=fortran linguist-language=Fortran
+*.FPP  text eol=lf diff=fortran linguist-language=Fortran
+*.fypp text eol=lf diff=fortran linguist-language=Fortran
+*.inc  text eol=lf diff=fortran linguist-language=Fortran
+*.fh   text eol=lf diff=fortran linguist-language=Fortran
+
+# ------------------------------------------------------------------------------
+# Build Systems, Manifests & Documentation Config
+# ------------------------------------------------------------------------------
+CMakeLists.txt text eol=lf linguist-language=CMake
+*.cmake        text eol=lf linguist-language=CMake
+*.cmake.in     text eol=lf linguist-language=CMake
+fpm.toml       text eol=lf
+*.toml         text eol=lf
+Makefile       text eol=lf
+GNUmakefile    text eol=lf
+*.mk           text eol=lf
+Doxyfile       text eol=lf
+*.dox          text eol=lf
+
+# ------------------------------------------------------------------------------
+# Scripts, Automation & C/C++ Interop (`ISO_C_BINDING`)
+# ------------------------------------------------------------------------------
+*.sh   text eol=lf diff=bash
+*.bash text eol=lf diff=bash
+*.zsh  text eol=lf
+*.py   text eol=lf diff=python
+*.pyi  text eol=lf diff=python
+
+*.c    text eol=lf diff=cpp
+*.h    text eol=lf diff=cpp
+*.cpp  text eol=lf diff=cpp
+*.hpp  text eol=lf diff=cpp
+
+# Windows-native scripts require CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# ------------------------------------------------------------------------------
+# Structured Data, Schemas, Workflows & Documentation
+# ------------------------------------------------------------------------------
+*.json        text eol=lf
+*.schema.json text eol=lf
+*.jsonl       text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.xml         text eol=lf
+*.xsd         text eol=lf
+*.svg         text eol=lf
+*.html        text eol=lf diff=html
+*.css         text eol=lf diff=css
+
+*.md          text eol=lf diff=markdown
+*.markdown    text eol=lf diff=markdown
+*.rst         text eol=lf
+*.adoc        text eol=lf
+*.txt         text eol=lf
+
+.editorconfig  text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+LICENSE*       text eol=lf
+NOTICE*        text eol=lf
+CITATION.cff   text eol=lf
+
+# ------------------------------------------------------------------------------
+# Binary Artifacts, Archives, Media & Scientific Data Formats
+# ------------------------------------------------------------------------------
+# Compiled Fortran module interfaces, objects, libraries & executables
+*.mod    binary
+*.smod   binary
+*.mod0   binary
+*.rmod   binary
+*.o      binary
+*.obj    binary
+*.a      binary
+*.lib    binary
+*.so     binary
+*.dylib  binary
+*.dll    binary
+*.exe    binary
+*.out    binary
+*.pdb    binary
+
+# Coverage & profiling binary files
+*.gcno     binary
+*.gcda     binary
+*.profraw  binary
+*.profdata binary
+
+# Compressed archives & packages
+*.tar  binary
+*.gz   binary
+*.tgz  binary
+*.xz   binary
+*.txz  binary
+*.bz2  binary
+*.tbz2 binary
+*.zst  binary
+*.zip  binary
+*.7z   binary
+*.whl  binary
+*.deb  binary
+*.rpm  binary
+*.dmg  binary
+*.pkg  binary
+*.msi  binary
+
+# Images, documents & fonts
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.bmp   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+
+# Binary scientific / unformatted Fortran data files
+*.nc   binary
+*.hdf  binary
+*.h5   binary
+*.hdf5 binary
+*.bin  binary
+*.dat  binary
+*.uf   binary
+
+# ------------------------------------------------------------------------------
+# `git archive` Export Exclusions (Clean GitHub Release Source Tarballs)
+# Preserves `src/`, `app/`, `test/`, `CMakeLists.txt`, `fpm.toml`, and `Doxyfile`
+# so downstream `fpm`, CMake, Spack, Conda, and Homebrew builds work out-of-box.
+# ------------------------------------------------------------------------------
+.github/                       export-ignore
+.pre-commit-config.yaml        export-ignore
+.editorconfig                  export-ignore
+.gitattributes                 export-ignore
+.gitignore                     export-ignore
+TODO_PLAN.md                   export-ignore
+scripts/install_no_push_hook.sh export-ignore

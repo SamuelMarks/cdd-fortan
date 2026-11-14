@@ -1,0 +1,588 @@
+# ==============================================================================
+# cdd-fortran — Continuous Integration, Quality Gates & GitHub Releases
+#
+# Jobs:
+#   1. lint     — Workflow, Shell, Python, EditorConfig/hygiene, version sync,
+#                 strict Fortran 2023 `-Werror` lint, and 100% Doxygen + AST doc audit.
+#   2. test     — Cross-platform CMake/CTest matrix (Linux Release & `-fcheck=all`
+#                 bounds sanitizer, macOS arm64 & x86_64, Windows MSYS2 UCRT64).
+#   3. fpm      — Fortran Package Manager (`fpm`) build & test suite verification.
+#   4. coverage — Enforces 100.0% function, 100.0% line, and 100.0% branch coverage.
+#   5. package  — Builds standalone release archives + HTML docs on `v*` tags.
+#   6. release  — Generates `SHA256SUMS.txt` and publishes to GitHub Releases on `v*` tags.
+# ==============================================================================
+
+name: CI & Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. Lint, Formatting Hygiene & 100% Documentation Audit
+  # ----------------------------------------------------------------------------
+  lint:
+    name: Lint & Documentation Audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Fortran 2023 compiler, Doxygen & linting toolchain
+        run: |
+          sudo apt-get update -qq
+          pkgs=(
+            gcc-14
+            gfortran-14
+            cmake
+            ninja-build
+            doxygen
+            shellcheck
+            python3-venv
+            curl
+            ca-certificates
+          )
+          sudo apt-get install -y -qq --no-install-recommends "${pkgs[@]}"
+          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-14 100
+          python3 -m venv "$RUNNER_TEMP/lint-venv"
+          "$RUNNER_TEMP/lint-venv/bin/pip" install --quiet --disable-pip-version-check ruff yamllint
+          act_url="https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash"
+          bash <(curl -fsSL "$act_url") latest "$RUNNER_TEMP/lint-venv/bin"
+          echo "$RUNNER_TEMP/lint-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Lint GitHub Actions workflows (actionlint & yamllint)
+        run: |
+          actionlint -color
+          yamllint -d "{extends: relaxed, rules: {line-length: {max: 140}}}" .github/workflows/
+
+      - name: Lint POSIX shell scripts (shellcheck)
+        run: |
+          shellcheck scripts/*.sh
+
+      - name: Lint Python scripts (ruff & py_compile)
+        run: |
+          ruff format --no-cache --check --line-length 120 scripts/ test/*.py
+          ruff check --no-cache --select E,F,W,I,B,UP,D --ignore D203,D213 --line-length 120 scripts/ test/*.py
+          python3 -m py_compile scripts/*.py test/*.py
+
+      - name: Verify EditorConfig formatting, library rules & version synchronization
+        shell: python3 {0}
+        run: |
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          NUL = chr(0)
+          LF = bytes([10])
+          CRLF = bytes([13, 10])
+          TAB = chr(9)
+
+          root = pathlib.Path(".").resolve()
+          errors = []
+
+          ls_out = subprocess.run(
+              ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+              cwd=root,
+              check=True,
+              capture_output=True,
+          ).stdout.decode("utf-8")
+
+          for rel in sorted(entry for entry in ls_out.split(NUL) if entry):
+              if rel == "TODO_PLAN.md":
+                  continue
+              path = root / rel
+              if not path.is_file():
+                  continue
+
+              raw = path.read_bytes()
+              try:
+                  text = raw.decode("utf-8")
+              except UnicodeDecodeError as exc:
+                  errors.append(f"{rel}: invalid UTF-8 ({exc})")
+                  continue
+
+              if raw and not raw.endswith(LF):
+                  errors.append(f"{rel}: missing final newline")
+
+              ext = path.suffix.lower()
+              if ext not in {".bat", ".cmd", ".ps1"} and CRLF in raw:
+                  errors.append(f"{rel}: unexpected CRLF line endings")
+
+              is_makefile = path.name in {"Makefile", "GNUmakefile", "makefile"} or ext == ".mk"
+              is_fixed_fortran = ext in {".f", ".for", ".ftn", ".f66", ".f77"}
+              is_markdown = ext in {".md", ".markdown"}
+
+              for lineno, line in enumerate(text.splitlines(), 1):
+                  if not is_makefile and TAB in line:
+                      errors.append(f"{rel}:{lineno}: tab character not permitted")
+                  if not is_fixed_fortran and not is_markdown and line.endswith((" ", TAB)):
+                      errors.append(f"{rel}:{lineno}: trailing whitespace")
+                  if ext == ".f90":
+                      limit = 132 if rel.startswith(("src/", "app/")) else 140
+                      if len(line) > limit:
+                          errors.append(f"{rel}:{lineno}: line length {len(line)} exceeds {limit}")
+
+              if rel.startswith("src/") and ext == ".f90":
+                  stop_pat = re.compile(r"^[ ]*(error[ ]+stop|stop)(?:[^a-z0-9_]|$)", re.IGNORECASE)
+                  for lineno, line in enumerate(text.splitlines(), 1):
+                      code_part = line.split("!", 1)[0]
+                      if stop_pat.search(code_part):
+                          errors.append(f"{rel}:{lineno}: prohibited STOP/ERROR STOP in library module")
+
+          # Verify version consistency across CMakeLists.txt, fpm.toml, Doxyfile, and src/cdd_fortran.f90
+          cmake_ver = re.search(
+              r"project[ ]*\([ ]*cdd_fortran[ ]+VERSION[ ]+([0-9]+[.][0-9]+[.][0-9]+)",
+              (root / "CMakeLists.txt").read_text(encoding="utf-8"),
+          )
+          fpm_ver = re.search(
+              r'^version[ ]*=[ ]*"([^"]+)"',
+              (root / "fpm.toml").read_text(encoding="utf-8"),
+              re.MULTILINE,
+          )
+          dox_ver = re.search(
+              r'^PROJECT_NUMBER[ ]*=[ ]*"([^"]+)"',
+              (root / "Doxyfile").read_text(encoding="utf-8"),
+              re.MULTILINE,
+          )
+          sdk_ver = re.search(
+              r'CDD_FORTRAN_VERSION[ ]*=[ ]*"([^"]+)"',
+              (root / "src" / "cdd_fortran.f90").read_text(encoding="utf-8"),
+          )
+          versions = {
+              "CMakeLists.txt": cmake_ver.group(1) if cmake_ver else None,
+              "fpm.toml": fpm_ver.group(1) if fpm_ver else None,
+              "Doxyfile": dox_ver.group(1) if dox_ver else None,
+              "src/cdd_fortran.f90": sdk_ver.group(1) if sdk_ver else None,
+          }
+          if None in versions.values() or len(set(versions.values())) != 1:
+              errors.append(f"Version mismatch across manifests: {versions}")
+
+          if errors:
+              for err in errors:
+                  print(f"LINT ERROR: {err}", file=sys.stderr)
+              sys.exit(1)
+          print(f"Hygiene & manifest checks passed (version {next(iter(versions.values()))}).")
+
+      - name: Strict Fortran 2023 compiler lint (-Werror) & 100% Doxygen + AST Doc Audit
+        run: |
+          ulimit -s unlimited
+          cmake -B build -G Ninja -DCMAKE_Fortran_COMPILER=gfortran-14
+          cmake --build build --parallel
+          cmake --build build --target docs
+
+  # ----------------------------------------------------------------------------
+  # 2. Cross-Platform Build & Test Matrix (Linux, macOS arm64/x86_64, Windows)
+  # ----------------------------------------------------------------------------
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 Release
+            os: ubuntu-24.04
+            build_type: Release
+            bounds_check: 'OFF'
+          - name: Linux x86_64 Bounds & Pointer Sanitizer
+            os: ubuntu-24.04
+            build_type: Debug
+            bounds_check: 'ON'
+          - name: macOS arm64 Bounds & Pointer Sanitizer
+            os: macos-latest
+            build_type: Debug
+            bounds_check: 'ON'
+          - name: macOS x86_64 Release
+            os: macos-15-intel
+            build_type: Release
+            bounds_check: 'OFF'
+          - name: Windows x86_64 (MSYS2 UCRT64)
+            os: windows-latest
+            build_type: Release
+            bounds_check: 'OFF'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends gcc-14 gfortran-14 cmake ninja-build
+          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
+          echo "FC=gfortran-14" >> "$GITHUB_ENV"
+
+      - name: Setup toolchain (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew list gcc >/dev/null 2>&1 || brew install gcc
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          BREW_PREFIX="$(brew --prefix)"
+          GFORT_BIN="$(find "${BREW_PREFIX}/bin" -maxdepth 1 -name 'gfortran-[1-9]*' | sort -V | tail -n 1)"
+          mkdir -p "$RUNNER_TEMP/gcc-bin"
+          ln -sf "$GFORT_BIN" "$RUNNER_TEMP/gcc-bin/gfortran"
+          echo "$RUNNER_TEMP/gcc-bin" >> "$GITHUB_PATH"
+          echo "FC=$GFORT_BIN" >> "$GITHUB_ENV"
+
+      - name: Setup MSYS2 UCRT64 toolchain (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Configure, build & run full CTest suite (Linux & macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ulimit -s 65532 || true
+          cmake_args=(
+            -B build
+            -G Ninja
+            "-DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+            "-DENABLE_BOUNDS_CHECK=${{ matrix.bounds_check }}"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Configure, build & run unit + CLI E2E suite (Windows MSYS2 UCRT64)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake_args=(
+            -B build
+            -G Ninja
+            "-DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+            "-DENABLE_BOUNDS_CHECK=${{ matrix.bounds_check }}"
+            -DCMAKE_Fortran_COMPILER=gfortran
+            "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--stack,67108864"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure -E "doc_coverage_audit|test_codec_runtime_compile|test_cli_suite"
+          mkdir -p build/win_e2e
+          echo '{"title":"Probe","type":"object","properties":{"cnt":{"type":"integer"},"ok":{"type":"boolean"}}}' > build/win_e2e/in.json
+          ./build/cdd-fortran.exe --version
+          for std in f57 f77 f90 f2003 f2023; do
+            ./build/cdd-fortran.exe json2fortran -s "$std" -i build/win_e2e/in.json -o build/win_e2e/udt.txt
+            ./build/cdd-fortran.exe fortran2json -s "$std" -i build/win_e2e/udt.txt -o build/win_e2e/out.json
+            ./build/cdd-fortran.exe gen-codec -s "$std" -i build/win_e2e/in.json -o build/win_e2e/codec.txt
+            ./build/cdd-fortran.exe sync -s "$std" -t build/win_e2e/udt.txt -i build/win_e2e/in.json --in-place
+          done
+
+  # ----------------------------------------------------------------------------
+  # 3. Fortran Package Manager (`fpm`) Build & Test Verification
+  # ----------------------------------------------------------------------------
+  fpm:
+    name: fpm Build & Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Fortran 2023 compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends gcc-14 gfortran-14
+          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
+
+      - name: Setup fpm
+        uses: fortran-lang/setup-fpm@v11
+
+      - name: Build, stage CLI binary & run fpm test suite
+        run: |
+          ulimit -s unlimited
+          fpm build --profile release --compiler gfortran
+          fpm install --profile release --compiler gfortran --prefix "$(pwd)/build" --bindir .
+          fpm test --profile release --compiler gfortran
+
+  # ----------------------------------------------------------------------------
+  # 4. Strict 100.0% Function, Line & Branch Coverage Gate
+  # ----------------------------------------------------------------------------
+  coverage:
+    name: 100% Coverage Gate
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install GCC Fortran, lcov & Ninja
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew list gcc >/dev/null 2>&1 || brew install gcc
+          brew list lcov >/dev/null 2>&1 || brew install lcov
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          BREW_PREFIX="$(brew --prefix)"
+          GFORT_BIN="$(find "${BREW_PREFIX}/bin" -maxdepth 1 -name 'gfortran-[1-9]*' | sort -V | tail -n 1)"
+          GCC_VER="${GFORT_BIN##*-}"
+          mkdir -p "$RUNNER_TEMP/gcc-bin"
+          ln -sf "$GFORT_BIN" "$RUNNER_TEMP/gcc-bin/gfortran"
+          ln -sf "${BREW_PREFIX}/bin/gcov-${GCC_VER}" "$RUNNER_TEMP/gcc-bin/gcov"
+          echo "$RUNNER_TEMP/gcc-bin" >> "$GITHUB_PATH"
+          echo "FC=$GFORT_BIN" >> "$GITHUB_ENV"
+          cat << 'EOF' > "$HOME/.lcovrc"
+          ignore_errors = inconsistent,mismatch,negative,unused
+          geninfo_unexecuted_blocks = 1
+          EOF
+
+      - name: Build instrumented targets & enforce 100.0% function/line/branch coverage
+        run: |
+          cmake -B build -G Ninja -DENABLE_COVERAGE=ON
+          cmake --build build --parallel
+          cmake --build build --target coverage
+
+      - name: Upload lcov tracefile artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-lcov-info
+          path: build/coverage.info
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 5. Package Multi-Platform Release Artifacts (Tags `v*` Only)
+  # ----------------------------------------------------------------------------
+  package:
+    name: Package (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - lint
+      - test
+      - fpm
+      - coverage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-24.04
+          - target: linux-aarch64
+            os: ubuntu-24.04
+          - target: macos-arm64
+            os: macos-latest
+          - target: macos-x86_64
+            os: macos-15-intel
+          - target: windows-x86_64
+            os: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Build & package Linux x86_64 binary + HTML documentation
+        if: matrix.target == 'linux-x86_64'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends gcc-14 gfortran-14 cmake ninja-build doxygen
+          link_flags="-static-libgfortran -static-libquadmath -static-libgcc -Wl,-z,stack-size=67108864"
+          cmake_args=(
+            -B build
+            -G Ninja
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=OFF
+            -DCMAKE_Fortran_COMPILER=gfortran-14
+            "-DCMAKE_EXE_LINKER_FLAGS=${link_flags}"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --target cdd-fortran --parallel
+          strip build/cdd-fortran
+          ./build/cdd-fortran --version
+
+          STAGE="cdd-fortran-${TAG}-linux-x86_64"
+          mkdir -p "dist/${STAGE}/include"
+          cp build/cdd-fortran "dist/${STAGE}/"
+          cp build/src/libcdd_fortran_lib.a "dist/${STAGE}/"
+          cp build/modules/*.mod "dist/${STAGE}/include/"
+          cp fpm.toml "dist/${STAGE}/"
+          tar -C dist -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+          rm -rf "dist/${STAGE}"
+
+          cmake --build build --target docs
+          tar -C build/docs -czf "dist/cdd-fortran-${TAG}-docs-html.tar.gz" html
+
+      - name: Cross-compile & package Linux aarch64 static binary
+        if: matrix.target == 'linux-aarch64'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          sudo apt-get update -qq
+          pkgs=(gcc-14-aarch64-linux-gnu gfortran-14-aarch64-linux-gnu cmake ninja-build)
+          sudo apt-get install -y -qq --no-install-recommends "${pkgs[@]}"
+          cmake_args=(
+            -B build
+            -G Ninja
+            -DCMAKE_SYSTEM_NAME=Linux
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=OFF
+            -DCMAKE_Fortran_COMPILER=aarch64-linux-gnu-gfortran-14
+            "-DCMAKE_EXE_LINKER_FLAGS=-static -Wl,-z,stack-size=67108864"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --target cdd-fortran --parallel
+          aarch64-linux-gnu-strip build/cdd-fortran
+
+          STAGE="cdd-fortran-${TAG}-linux-aarch64"
+          mkdir -p "dist/${STAGE}/include"
+          cp build/cdd-fortran "dist/${STAGE}/"
+          cp build/src/libcdd_fortran_lib.a "dist/${STAGE}/"
+          cp build/modules/*.mod "dist/${STAGE}/include/"
+          cp fpm.toml "dist/${STAGE}/"
+          tar -C dist -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+          rm -rf "dist/${STAGE}"
+
+      - name: Build & package macOS binary (${{ matrix.target }})
+        if: runner.os == 'macOS'
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew list gcc >/dev/null 2>&1 || brew install gcc
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          BREW_PREFIX="$(brew --prefix)"
+          GFORT_BIN="$(find "${BREW_PREFIX}/bin" -maxdepth 1 -name 'gfortran-[1-9]*' | sort -V | tail -n 1)"
+          cmake_args=(
+            -B build
+            -G Ninja
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=OFF
+            "-DCMAKE_Fortran_COMPILER=${GFORT_BIN}"
+            "-DCMAKE_EXE_LINKER_FLAGS=-static-libgfortran -static-libquadmath -static-libgcc"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --target cdd-fortran --parallel
+          strip -x build/cdd-fortran
+          ./build/cdd-fortran --version
+
+          STAGE="cdd-fortran-${TAG}-${TARGET}"
+          mkdir -p "dist/${STAGE}/include"
+          cp build/cdd-fortran "dist/${STAGE}/"
+          cp build/src/libcdd_fortran_lib.a "dist/${STAGE}/"
+          cp build/modules/*.mod "dist/${STAGE}/include/"
+          cp fpm.toml "dist/${STAGE}/"
+          tar -C dist -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+          rm -rf "dist/${STAGE}"
+
+      - name: Setup MSYS2 UCRT64 for Windows packaging
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-python
+            zip
+
+      - name: Build & package Windows x86_64 standalone binary
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          cmake_args=(
+            -B build
+            -G Ninja
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=OFF
+            -DCMAKE_Fortran_COMPILER=gfortran
+            "-DCMAKE_EXE_LINKER_FLAGS=-static -Wl,--stack,67108864"
+          )
+          cmake "${cmake_args[@]}"
+          cmake --build build --target cdd-fortran --parallel
+          strip build/cdd-fortran.exe
+          ./build/cdd-fortran.exe --version
+
+          STAGE="cdd-fortran-${TAG}-windows-x86_64"
+          mkdir -p "dist/${STAGE}/include"
+          cp build/cdd-fortran.exe "dist/${STAGE}/"
+          cp build/src/libcdd_fortran_lib.a "dist/${STAGE}/"
+          cp build/modules/*.mod "dist/${STAGE}/include/"
+          cp fpm.toml "dist/${STAGE}/"
+          (cd dist && zip -rq "${STAGE}.zip" "${STAGE}")
+          rm -rf "dist/${STAGE}"
+
+      - name: Upload release package artifact (${{ matrix.target }})
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------------------
+  # 6. Publish to GitHub Releases (Tags `v*` Only)
+  # ----------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all packaged release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          ls -lh
+          sha256sum cdd-fortran-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish release to GitHub Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: cdd-fortran ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/cdd-fortran-*
+            dist/SHA256SUMS.txt
