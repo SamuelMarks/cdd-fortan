@@ -100,6 +100,72 @@ def check_library_no_stop(repo_root: pathlib.Path) -> list[str]:
     return errors
 
 
+def find_fortran_comment_offset(line: str) -> int:
+    """Return 0-based index of the first unquoted `!` comment marker in `line`, or -1."""
+    in_single = False
+    in_double = False
+    for idx, ch in enumerate(line):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "!" and not in_single and not in_double:
+            return idx
+    return -1
+
+
+def check_fortran_cpp_comments(repo_root: pathlib.Path) -> list[str]:
+    """Verify `.f90` comments contain no unclosed `/*` tokens that break Ninja `-cpp -E`."""
+    errors: list[str] = []
+    for subdir in ("src", "app", "test"):
+        base = repo_root / subdir
+        if not base.is_dir():
+            continue
+        for f90_path in sorted(base.rglob("*.f90")):
+            rel = f90_path.relative_to(repo_root).as_posix()
+            for lineno, line in enumerate(f90_path.read_text(encoding="utf-8").splitlines(), 1):
+                comment_pos = find_fortran_comment_offset(line)
+                if comment_pos < 0:
+                    continue
+                comment = line[comment_pos:]
+                open_idx = comment.find("/*")
+                if open_idx != -1 and "*/" not in comment[open_idx + 2 :]:
+                    errors.append(f"{rel}:{lineno}: unclosed '/*' in Fortran comment breaks CMake Ninja '-cpp -E'")
+    return errors
+
+
+def check_fpm_manifest_schema(repo_root: pathlib.Path) -> list[str]:
+    """Validate `fpm.toml` `[profiles]` feature arrays and `[features]` subtable keys."""
+    fpm_path = repo_root / "fpm.toml"
+    if not fpm_path.is_file():
+        return []
+    errors: list[str] = []
+    section = ""
+    for lineno, raw_line in enumerate(fpm_path.read_text(encoding="utf-8").splitlines(), 1):
+        stripped = raw_line.split("#", 1)[0].strip()
+        if not stripped:
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped.strip("[]").strip()
+            if section.startswith("profiles."):
+                errors.append(
+                    f"fpm.toml:{lineno}: [{section}] subtable is invalid in fpm >= 0.13; "
+                    "map [profiles] keys to feature arrays"
+                )
+            continue
+        if "=" not in stripped:
+            continue
+        key, val = (part.strip() for part in stripped.split("=", 1))
+        if section == "profiles" and not (val.startswith("[") and val.endswith("]")):
+            errors.append(f"fpm.toml:{lineno}: profile '{key}' must be an array of feature names")
+        elif (section == "features" or section.startswith("features.")) and key == "compiler":
+            errors.append(
+                f"fpm.toml:{lineno}: 'compiler' key is invalid in [{section}]; "
+                f"use a compiler subtable such as [{section}.gfortran]"
+            )
+    return errors
+
+
 def check_manifest_versions(repo_root: pathlib.Path) -> list[str]:
     """Verify version strings agree across `CMakeLists.txt`, `fpm.toml`, `Doxyfile`, and SDK."""
     cmake_txt = (repo_root / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -124,22 +190,29 @@ def check_manifest_versions(repo_root: pathlib.Path) -> list[str]:
 
 
 def ensure_cmake_configured(repo_root: pathlib.Path, build_dir: pathlib.Path) -> None:
-    """Configure `build_dir` with CMake (enabling coverage instrumentation when `lcov` is present)."""
+    """Configure `build_dir` with CMake (preferring Ninja and coverage instrumentation)."""
     cmake_bin = shutil.which("cmake")
     if not cmake_bin:
         msg = "cmake executable not found on PATH."
         raise RuntimeError(msg)
 
+    want_ninja = shutil.which("ninja") is not None
     want_cov = shutil.which("lcov") is not None
     cache_file = build_dir / "CMakeCache.txt"
     needs_configure = not cache_file.is_file()
-    if cache_file.is_file() and want_cov:
+    if cache_file.is_file():
         cache_txt = cache_file.read_text(encoding="utf-8", errors="replace")
-        if "ENABLE_COVERAGE:BOOL=ON" not in cache_txt:
+        if want_ninja and "CMAKE_GENERATOR:INTERNAL=Ninja" not in cache_txt:
+            cache_file.unlink()
+            shutil.rmtree(build_dir / "CMakeFiles", ignore_errors=True)
+            needs_configure = True
+        elif want_cov and "ENABLE_COVERAGE:BOOL=ON" not in cache_txt:
             needs_configure = True
 
     if needs_configure:
         cmd = [cmake_bin, "-S", str(repo_root), "-B", str(build_dir)]
+        if want_ninja:
+            cmd.extend(["-G", "Ninja"])
         if want_cov:
             cmd.append("-DENABLE_COVERAGE=ON")
         subprocess.run(cmd, cwd=repo_root, check=True)
@@ -158,7 +231,12 @@ def run_build(repo_root: pathlib.Path, build_dir: pathlib.Path) -> int:
 
 def run_lint(repo_root: pathlib.Path, build_dir: pathlib.Path) -> int:
     """Run Fortran library rules, manifest sync, Python/Shell linters, and Doxygen/AST audits."""
-    errors = check_library_no_stop(repo_root) + check_manifest_versions(repo_root)
+    errors = (
+        check_library_no_stop(repo_root)
+        + check_fortran_cpp_comments(repo_root)
+        + check_manifest_versions(repo_root)
+        + check_fpm_manifest_schema(repo_root)
+    )
     if errors:
         for err in errors:
             print(f"LINT ERROR: {err}", file=sys.stderr)

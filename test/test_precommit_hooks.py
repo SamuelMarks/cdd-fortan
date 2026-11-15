@@ -199,6 +199,8 @@ class TestPrecommitTasks(unittest.TestCase):
         """`STOP` in `src/` and mismatched manifest versions are flagged accurately."""
         self.assertEqual(precommit_tasks.check_library_no_stop(REPO_ROOT), [])
         self.assertEqual(precommit_tasks.check_manifest_versions(REPO_ROOT), [])
+        self.assertEqual(precommit_tasks.check_fortran_cpp_comments(REPO_ROOT), [])
+        self.assertEqual(precommit_tasks.check_fpm_manifest_schema(REPO_ROOT), [])
 
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
@@ -221,6 +223,57 @@ class TestPrecommitTasks(unittest.TestCase):
             ver_errs = precommit_tasks.check_manifest_versions(root)
             self.assertEqual(len(ver_errs), 1)
             self.assertIn("Version mismatch", ver_errs[0])
+
+    def test_fortran_cpp_comment_and_fpm_manifest_schema_checks(self) -> None:
+        """Unclosed `/*` in `.f90` comments and invalid `fpm.toml` profiles/features are caught."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self.assertEqual(precommit_tasks.check_fpm_manifest_schema(root), [])
+            (root / "src").mkdir()
+            (root / "src" / "cpp_hazard.f90").write_text(
+                f"module m{LF}"
+                f'  character(len=*), parameter :: S = "not!/*comment"{LF}'
+                f"  integer :: ok = 1 !< Closed /* ok */ comment.{LF}"
+                f"  integer :: bad = 2 !< Standard comment (! or col-1 C/*).{LF}"
+                f"end module m{LF}",
+                encoding="utf-8",
+            )
+            cpp_errs = precommit_tasks.check_fortran_cpp_comments(root)
+            self.assertEqual(len(cpp_errs), 1)
+            self.assertIn("cpp_hazard.f90:4", cpp_errs[0])
+
+            (root / "fpm.toml").write_text(
+                f"[profiles.release]{LF}"
+                f'compiler = "gfortran"{LF}'
+                f"[features.release]{LF}"
+                f'compiler = "gfortran"{LF}'
+                f"[profiles]{LF}"
+                f'debug = "debug"{LF}',
+                encoding="utf-8",
+            )
+            fpm_errs = precommit_tasks.check_fpm_manifest_schema(root)
+            self.assertEqual(len(fpm_errs), 3)
+
+    def test_ensure_cmake_configured_switches_makefiles_cache_to_ninja(self) -> None:
+        """Stale non-Ninja `CMakeCache.txt` is cleared and reconfigured with `-G Ninja`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            bdir = root / "build"
+            (bdir / "CMakeFiles").mkdir(parents=True)
+            cache = bdir / "CMakeCache.txt"
+            cache.write_text("CMAKE_GENERATOR:INTERNAL=Unix Makefiles" + LF, encoding="utf-8")
+
+            def fake_which(tool: str) -> str | None:
+                return f"/usr/bin/{tool}" if tool in ("cmake", "ninja", "lcov") else None
+
+            with mock.patch("shutil.which", side_effect=fake_which), mock.patch("subprocess.run") as run_mock:
+                precommit_tasks.ensure_cmake_configured(root, bdir)
+                self.assertFalse(cache.exists())
+                run_mock.assert_called_once()
+                called_cmd = run_mock.call_args[0][0]
+                self.assertIn("-G", called_cmd)
+                self.assertIn("Ninja", called_cmd)
+                self.assertIn("-DENABLE_COVERAGE=ON", called_cmd)
 
     def test_block_push_always_returns_nonzero(self) -> None:
         """`block-push` unconditionally exits 1 to prevent accidental `git push`."""

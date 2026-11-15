@@ -342,7 +342,7 @@ contains
     end do
   end subroutine test_rt_fortran_90_95
 
-  !> @brief Compile and run Fortran 2003 OOP `EXTENDS` + `ENUM, BIND(C)` + TBP codec (`-std=f2003`).
+  !> @brief Compile and run Fortran 2003 OOP `EXTENDS` + `ENUM (BIND(C))` + TBP codec (`-std=f2003`).
   !> @param[inout] st Test harness state.
   !> @param[inout] fs OS filesystem handle.
   subroutine test_rt_fortran_2003_oop_enum(st, fs)

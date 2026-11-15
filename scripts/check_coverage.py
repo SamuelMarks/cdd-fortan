@@ -18,6 +18,20 @@ def find_gcov_tool() -> str:
     sys.exit(1)
 
 
+def lcov_extra_args(lcov_bin: str) -> list[str]:
+    """Return lcov 2.x compatibility flags so coverage works without requiring `~/.lcovrc`."""
+    proc = subprocess.run([lcov_bin, "--version"], check=False, capture_output=True, text=True)
+    ver_match = re.search(r"version\s+(\d+)", proc.stdout + proc.stderr, re.IGNORECASE)
+    if ver_match and int(ver_match.group(1)) >= 2:
+        return [
+            "--ignore-errors",
+            "inconsistent,inconsistent,mismatch,mismatch,negative,negative,unused,unused",
+            "--rc",
+            "geninfo_unexecuted_blocks=1",
+        ]
+    return []
+
+
 def main() -> int:
     """Capture lcov tracefile, filter to src/ and app/, and enforce 100.0% across all metrics."""
     if len(sys.argv) < 2:
@@ -32,6 +46,7 @@ def main() -> int:
         return 2
 
     gcov_tool = find_gcov_tool()
+    extra_args = lcov_extra_args(lcov_bin)
     raw_info = build_dir / "coverage_raw.info"
     filtered_info = build_dir / "coverage.info"
 
@@ -47,6 +62,7 @@ def main() -> int:
             gcov_tool,
             "--rc",
             "branch_coverage=1",
+            *extra_args,
             "--quiet",
         ],
         check=True,
@@ -65,13 +81,14 @@ def main() -> int:
             str(filtered_info),
             "--rc",
             "branch_coverage=1",
+            *extra_args,
             "--quiet",
         ],
         check=True,
     )
 
     summary = subprocess.run(
-        [lcov_bin, "--summary", str(filtered_info), "--rc", "branch_coverage=1"],
+        [lcov_bin, "--summary", str(filtered_info), "--rc", "branch_coverage=1", *extra_args],
         check=True,
         capture_output=True,
         text=True,

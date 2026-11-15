@@ -209,10 +209,9 @@ def check_line_lengths(repo_root: pathlib.Path, path: pathlib.Path, formatted: b
     violations: list[str] = []
     lines = formatted.decode("utf-8").splitlines()
     if ext in FREE_FORTRAN_EXTS:
-        limit = 132 if rel.startswith(("src/", "app/")) else 140
         for idx, line in enumerate(lines, 1):
-            if len(line) > limit:
-                violations.append(f"{rel}:{idx}: Fortran line length {len(line)} exceeds {limit}")
+            if len(line) > 132:
+                violations.append(f"{rel}:{idx}: Fortran line length {len(line)} exceeds 132")
     elif ext in FIXED_FORTRAN_EXTS:
         for idx, line in enumerate(lines, 1):
             if len(line) > 80:

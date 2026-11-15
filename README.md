@@ -4,6 +4,7 @@
 ![test coverage](https://img.shields.io/badge/test%20coverage-100%25-brightgreen)
 ![standards](https://img.shields.io/badge/Fortran-FORTRAN%20I%20--%202023-blue)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI & Release](https://github.com/SamuelMarks/cdd-fortan/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-fortan/actions/workflows/ci.yml)
 
 Self-hosted, strongly-typed **Fortran SDK** (`cdd_fortran`) and **CLI** (`cdd-fortran`) for lossless bidirectional conversion, zero-dependency JSON codec generation, and trivia-preserving surgical synchronization between **JSON** (JSON Schema Draft 2020-12 / OpenAPI 3.x and raw JSON samples) and **Fortran User-Defined Types (UDTs)** across all **12 Fortran standards** (`FORTRAN I` through `Fortran 2023`).
 

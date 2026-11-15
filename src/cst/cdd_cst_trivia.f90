@@ -18,7 +18,7 @@ module cdd_cst_trivia
 
   integer(i32), parameter :: TRIVIA_WHITESPACE = 1_i32            !< Horizontal spaces/tabs.
   integer(i32), parameter :: TRIVIA_NEWLINE = 2_i32               !< Exact LF or CRLF line ending.
-  integer(i32), parameter :: TRIVIA_LINE_COMMENT = 3_i32          !< Standard comment (! or col-1 C/*).
+  integer(i32), parameter :: TRIVIA_LINE_COMMENT = 3_i32          !< Standard comment (! or col-1 C or *).
   integer(i32), parameter :: TRIVIA_DOXYGEN_COMMENT = 4_i32       !< Doxygen comment (!>, !<, !!, C>).
   integer(i32), parameter :: TRIVIA_CONTINUATION_FREE = 5_i32     !< Free-form '&' continuation span.
   integer(i32), parameter :: TRIVIA_FIXED_LABEL_GAP = 6_i32       !< Fixed-form columns 1-6 gap/cont.

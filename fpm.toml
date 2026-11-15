@@ -86,15 +86,35 @@ name = "test_cli_suite"
 source-dir = "test"
 main = "test_cli_suite.f90"
 
-[profiles.release]
-compiler = "gfortran"
+[features.release.gfortran]
 flags = "-std=f2023 -frecursive -O2 -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
 
-[profiles.debug]
-compiler = "gfortran"
+[features.release.macos]
+link-time-flags = "-Wl,-stack_size,0x4000000"
+
+[features.release.windows]
+link-time-flags = "-Wl,--stack,67108864"
+
+[features.debug.gfortran]
 flags = "-std=f2023 -frecursive -g -O0 -fcheck=all -fbacktrace -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
 
-[profiles.coverage]
-compiler = "gfortran"
+[features.debug.macos]
+link-time-flags = "-Wl,-stack_size,0x4000000"
+
+[features.debug.windows]
+link-time-flags = "-Wl,--stack,67108864"
+
+[features.coverage.gfortran]
 flags = "-std=f2023 -frecursive -g -O0 --coverage -fprofile-arcs -ftest-coverage -Wall -Wextra -Wpedantic -Wimplicit-interface -Wimplicit-procedure -fimplicit-none -Wuse-without-only -Wconversion -Wsurprising -Wunderflow -Wcharacter-truncation -Wline-truncation -Werror"
 link-time-flags = "--coverage"
+
+[features.coverage.macos]
+link-time-flags = "-Wl,-stack_size,0x4000000"
+
+[features.coverage.windows]
+link-time-flags = "-Wl,--stack,67108864"
+
+[profiles]
+release = ["release"]
+debug = ["debug"]
+coverage = ["coverage"]

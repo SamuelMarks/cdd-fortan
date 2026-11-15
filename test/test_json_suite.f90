@@ -75,8 +75,8 @@ contains
     call th_eq_i32(st, err%code, CDD_ERR_BUFFER_OVERFLOW, "lex quota overflow")
 
     ! CRLF, bare CR at EOF, standalone LF, TAB, 0 at EOF, 1e2 unsigned exp, escapes
-    call json_lex("{" // CR // LF // TAB // '"k": [0, 1e2, -12.5E-2, "a' // BS // 'nb", "", true, false, null]' // LF // "}" // CR, &
-      stream, err)
+    call json_lex("{" // CR // LF // TAB // '"k": [0, 1e2, -12.5E-2, "a' // BS // &
+      'nb", "", true, false, null]' // LF // "}" // CR, stream, err)
     call th_eq_i32(st, err%code, CDD_OK, "lex valid rich json")
     call json_lex("0", stream, err)
     call th_eq_i32(st, err%code, CDD_OK, "lex standalone 0")

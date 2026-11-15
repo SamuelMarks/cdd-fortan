@@ -140,7 +140,7 @@ contains
       "      REAL X" // LF // "      COMMON /A/ X" // LF, opts, b, err)
     call th_eq_str(st, b%udts(1)%json_name%raw(1:b%udts(1)%json_name%len), "A", "1-char COMMON A")
 
-    ! 4. Hand-written modern F2023 with unannotated ENUM, BIND(C), pointer => null(), target_udt_name
+    ! 4. Hand-written modern F2023 with unannotated ENUM (BIND(C)), pointer => null(), target_udt_name
     call cdd_default_options(opts)
     opts%standard%id = STD_FORTRAN_2023
     call str_set(opts%target_udt_name, "vec", err)
