@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Fortran 2023 compiler, Doxygen & linting toolchain
         run: |
@@ -223,7 +223,7 @@ jobs:
             bounds_check: 'OFF'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup toolchain (Linux)
         if: runner.os == 'Linux'
@@ -308,7 +308,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Fortran 2023 compiler
         run: |
@@ -335,7 +335,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install GCC Fortran, lcov & Ninja
         env:
@@ -400,7 +400,7 @@ jobs:
             os: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Build & package Linux x86_64 binary + HTML documentation
         if: matrix.target == 'linux-x86_64'

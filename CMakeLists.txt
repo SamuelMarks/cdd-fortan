@@ -78,4 +78,12 @@ if(DOXYGEN_EXECUTABLE)
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Running strict Doxygen Fortran verification (WARN_AS_ERROR)"
   )
+  if(TARGET doc_coverage_audit)
+    add_dependencies(docs doc_coverage_audit)
+    add_custom_command(TARGET docs POST_BUILD
+      COMMAND $<TARGET_FILE:doc_coverage_audit>
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      COMMENT "Running Fortran AST 100% doc-coverage auditor"
+    )
+  endif()
 endif()

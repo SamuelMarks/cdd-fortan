@@ -132,7 +132,10 @@ class TestUpdateCoverageShields(unittest.TestCase):
             # 1. Missing README.md -> created with doc coverage shield
             self.assertTrue(update_coverage_shields.update_readme_file(readme, "doc", 100.0))
             txt1 = readme.read_text(encoding="utf-8")
-            self.assertIn("![doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)", txt1)
+            self.assertIn(
+                "![doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)",
+                txt1,
+            )
 
             # 2. Idempotent second run -> returns False (no file write)
             self.assertFalse(update_coverage_shields.update_readme_file(readme, "doc", 100.0))
@@ -140,12 +143,18 @@ class TestUpdateCoverageShields(unittest.TestCase):
             # 3. Add test coverage shield adjacent to existing doc coverage shield
             self.assertTrue(update_coverage_shields.update_readme_file(readme, "test", 92.5))
             txt2 = readme.read_text(encoding="utf-8")
-            self.assertIn("![test coverage](https://img.shields.io/badge/test%20coverage-92.5%25-green)", txt2)
+            self.assertIn(
+                "![test coverage](https://img.shields.io/badge/test%20coverage-92.5%25-green)",
+                txt2,
+            )
 
             # 4. Update existing test coverage shield from 92.5% -> 100%
             self.assertTrue(update_coverage_shields.update_readme_file(readme, "test", 100.0))
             txt3 = readme.read_text(encoding="utf-8")
-            self.assertIn("![test coverage](https://img.shields.io/badge/test%20coverage-100%25-brightgreen)", txt3)
+            self.assertIn(
+                "![test coverage](https://img.shields.io/badge/test%20coverage-100%25-brightgreen)",
+                txt3,
+            )
             self.assertNotIn("92.5%25", txt3)
 
             # 5. Insert after H1 when no shields exist yet
@@ -191,6 +200,16 @@ class TestUpdateCoverageShields(unittest.TestCase):
         with self.assertRaises(ValueError):
             update_coverage_shields.parse_lcov_summary_output("lines...: 100.0% (10 of 10 lines)")
 
+        v2_proc = mock.Mock(stdout="lcov: LCOV version 2.1-1", stderr="")
+        with mock.patch("subprocess.run", return_value=v2_proc):
+            extra2 = update_coverage_shields.lcov_extra_args("/usr/bin/lcov")
+            self.assertIn("--ignore-errors", extra2)
+            self.assertIn("geninfo_unexecuted_blocks=1", extra2)
+
+        v1_proc = mock.Mock(stdout="lcov: LCOV version 1.16", stderr="")
+        with mock.patch("subprocess.run", return_value=v1_proc):
+            self.assertEqual(update_coverage_shields.lcov_extra_args("/usr/bin/lcov"), [])
+
 
 class TestPrecommitTasks(unittest.TestCase):
     """Verify library `STOP` detection, manifest version checks, and `block-push` safety hook."""
@@ -201,6 +220,7 @@ class TestPrecommitTasks(unittest.TestCase):
         self.assertEqual(precommit_tasks.check_manifest_versions(REPO_ROOT), [])
         self.assertEqual(precommit_tasks.check_fortran_cpp_comments(REPO_ROOT), [])
         self.assertEqual(precommit_tasks.check_fpm_manifest_schema(REPO_ROOT), [])
+        self.assertEqual(precommit_tasks.check_doxyfile_hermetic(REPO_ROOT), [])
 
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
@@ -215,7 +235,8 @@ class TestPrecommitTasks(unittest.TestCase):
             self.assertIn("prohibited STOP/ERROR STOP", errs[0])
 
             (root / "CMakeLists.txt").write_text(
-                "project(cdd_fortran VERSION 0.1.0 LANGUAGES Fortran)" + LF, encoding="utf-8"
+                "project(cdd_fortran VERSION 0.1.0 LANGUAGES Fortran)" + LF,
+                encoding="utf-8",
             )
             (root / "fpm.toml").write_text('version = "0.2.0"' + LF, encoding="utf-8")
             (root / "Doxyfile").write_text('PROJECT_NUMBER = "0.1.0"' + LF, encoding="utf-8")
@@ -254,6 +275,15 @@ class TestPrecommitTasks(unittest.TestCase):
             fpm_errs = precommit_tasks.check_fpm_manifest_schema(root)
             self.assertEqual(len(fpm_errs), 3)
 
+            # Missing Doxyfile is ignored; omitted HAVE_DOT or HAVE_DOT = YES is rejected; HAVE_DOT = NO passes
+            self.assertEqual(precommit_tasks.check_doxyfile_hermetic(root), [])
+            (root / "Doxyfile").write_text(f"# comment only{LF}GENERATE_HTML = YES{LF}", encoding="utf-8")
+            self.assertEqual(len(precommit_tasks.check_doxyfile_hermetic(root)), 1)
+            (root / "Doxyfile").write_text(f"HAVE_DOT = YES{LF}", encoding="utf-8")
+            self.assertEqual(len(precommit_tasks.check_doxyfile_hermetic(root)), 1)
+            (root / "Doxyfile").write_text(f"HAVE_DOT = NO{LF}", encoding="utf-8")
+            self.assertEqual(precommit_tasks.check_doxyfile_hermetic(root), [])
+
     def test_ensure_cmake_configured_switches_makefiles_cache_to_ninja(self) -> None:
         """Stale non-Ninja `CMakeCache.txt` is cleared and reconfigured with `-G Ninja`."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -266,7 +296,10 @@ class TestPrecommitTasks(unittest.TestCase):
             def fake_which(tool: str) -> str | None:
                 return f"/usr/bin/{tool}" if tool in ("cmake", "ninja", "lcov") else None
 
-            with mock.patch("shutil.which", side_effect=fake_which), mock.patch("subprocess.run") as run_mock:
+            with (
+                mock.patch("shutil.which", side_effect=fake_which),
+                mock.patch("subprocess.run") as run_mock,
+            ):
                 precommit_tasks.ensure_cmake_configured(root, bdir)
                 self.assertFalse(cache.exists())
                 run_mock.assert_called_once()

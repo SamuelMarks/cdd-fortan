@@ -22,3 +22,4 @@ GENERATE_HTML          = YES
 HTML_OUTPUT            = html
 GENERATE_LATEX         = NO
 GENERATE_XML           = NO
+HAVE_DOT               = NO

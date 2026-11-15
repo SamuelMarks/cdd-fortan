@@ -38,12 +38,3 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_precommit_hooks.py")
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   )
 endif()
-
-if(TARGET doc_coverage_audit AND TARGET docs)
-  add_dependencies(docs doc_coverage_audit)
-  add_custom_command(TARGET docs POST_BUILD
-    COMMAND $<TARGET_FILE:doc_coverage_audit>
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Running Fortran AST 100% doc-coverage auditor"
-  )
-endif()

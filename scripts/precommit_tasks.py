@@ -173,7 +173,10 @@ def check_manifest_versions(repo_root: pathlib.Path) -> list[str]:
     dox_txt = (repo_root / "Doxyfile").read_text(encoding="utf-8")
     sdk_txt = (repo_root / "src" / "cdd_fortran.f90").read_text(encoding="utf-8")
 
-    cmake_m = re.search(r"project[ ]*\([ ]*cdd_fortran[ ]+VERSION[ ]+([0-9]+[.][0-9]+[.][0-9]+)", cmake_txt)
+    cmake_m = re.search(
+        r"project[ ]*\([ ]*cdd_fortran[ ]+VERSION[ ]+([0-9]+[.][0-9]+[.][0-9]+)",
+        cmake_txt,
+    )
     fpm_m = re.search(r'^version[ ]*=[ ]*"([^"]+)"', fpm_txt, re.MULTILINE)
     dox_m = re.search(r'^PROJECT_NUMBER[ ]*=[ ]*"([^"]+)"', dox_txt, re.MULTILINE)
     sdk_m = re.search(r'CDD_FORTRAN_VERSION[ ]*=[ ]*"([^"]+)"', sdk_txt)
@@ -186,6 +189,27 @@ def check_manifest_versions(repo_root: pathlib.Path) -> list[str]:
     }
     if None in versions.values() or len(set(versions.values())) != 1:
         return [f"Version mismatch across project manifests: {versions}"]
+    return []
+
+
+def check_doxyfile_hermetic(repo_root: pathlib.Path) -> list[str]:
+    """Verify `Doxyfile` explicitly sets `HAVE_DOT = NO` for hermetic Linux/macOS builds."""
+    dox_path = repo_root / "Doxyfile"
+    if not dox_path.is_file():
+        return []
+    have_dot_val: str | None = None
+    for raw_line in dox_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.split("#", 1)[0].strip()
+        if "=" not in stripped:
+            continue
+        key, val = (part.strip() for part in stripped.split("=", 1))
+        if key == "HAVE_DOT":
+            have_dot_val = val.strip('"').upper()
+    if have_dot_val != "NO":
+        return [
+            "Doxyfile: must explicitly set 'HAVE_DOT = NO' because Debian/Ubuntu doxygen "
+            "defaults HAVE_DOT to YES and fails without Graphviz 'dot'"
+        ]
     return []
 
 
@@ -236,6 +260,7 @@ def run_lint(repo_root: pathlib.Path, build_dir: pathlib.Path) -> int:
         + check_fortran_cpp_comments(repo_root)
         + check_manifest_versions(repo_root)
         + check_fpm_manifest_schema(repo_root)
+        + check_doxyfile_hermetic(repo_root)
     )
     if errors:
         for err in errors:
@@ -279,7 +304,11 @@ def run_lint(repo_root: pathlib.Path, build_dir: pathlib.Path) -> int:
     ensure_cmake_configured(repo_root, build_dir)
     cmake_bin = shutil.which("cmake")
     if cmake_bin and shutil.which("doxygen"):
-        subprocess.run([cmake_bin, "--build", str(build_dir), "--target", "docs"], cwd=repo_root, check=True)
+        subprocess.run(
+            [cmake_bin, "--build", str(build_dir), "--target", "docs"],
+            cwd=repo_root,
+            check=True,
+        )
     return 0
 
 
@@ -298,13 +327,20 @@ def run_test(repo_root: pathlib.Path, build_dir: pathlib.Path) -> int:
     ensure_cmake_configured(repo_root, build_dir)
     lcov_bin = shutil.which("lcov")
     if lcov_bin:
-        subprocess.run([lcov_bin, "--zerocounters", "--directory", str(build_dir), "--quiet"], check=True)
+        subprocess.run(
+            [lcov_bin, "--zerocounters", "--directory", str(build_dir), "--quiet"],
+            check=True,
+        )
 
     ctest_bin = shutil.which("ctest")
     if not ctest_bin:
         print("TEST ERROR: ctest not found on PATH.", file=sys.stderr)
         return 1
-    subprocess.run([ctest_bin, "--test-dir", str(build_dir), "--output-on-failure"], cwd=repo_root, check=True)
+    subprocess.run(
+        [ctest_bin, "--test-dir", str(build_dir), "--output-on-failure"],
+        cwd=repo_root,
+        check=True,
+    )
     return 0
 
 
@@ -356,7 +392,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.task == "lint":
             return run_lint(repo_root, build_dir)
         return run_test(repo_root, build_dir)
-    except (RuntimeError, subprocess.CalledProcessError, py_compile.PyCompileError) as exc:
+    except (
+        RuntimeError,
+        subprocess.CalledProcessError,
+        py_compile.PyCompileError,
+    ) as exc:
         print(f"PRE-COMMIT {args.task.upper()} FAILED: {exc}", file=sys.stderr)
         return 1
 

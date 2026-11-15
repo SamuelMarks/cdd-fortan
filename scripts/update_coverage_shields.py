@@ -131,11 +131,16 @@ def parse_doc_audit_output(stdout_text: str, stderr_text: str, doxygen_failed: b
     return pct, documented, total_items
 
 
-def parse_lcov_summary_output(summary_text: str) -> tuple[float, dict[str, tuple[float, int, int]]]:
+def parse_lcov_summary_output(
+    summary_text: str,
+) -> tuple[float, dict[str, tuple[float, int, int]]]:
     """Parse `lcov --summary` output and return `(strict_min_pct, metrics_map)`."""
     metrics: dict[str, tuple[float, int, int]] = {}
     for metric in ("lines", "functions", "branches"):
-        match = re.search(rf"{metric}[.]+:[ ]*([0-9.]+)%[ ]*\(([0-9]+)[ ]+of[ ]+([0-9]+)", summary_text)
+        match = re.search(
+            rf"{metric}[.]+:[ ]*([0-9.]+)%[ ]*\(([0-9]+)[ ]+of[ ]+([0-9]+)",
+            summary_text,
+        )
         if match:
             hit = int(match.group(2))
             total = int(match.group(3))
@@ -151,12 +156,32 @@ def parse_lcov_summary_output(summary_text: str) -> tuple[float, dict[str, tuple
 
 def find_gcov_executable() -> str:
     """Locate the GCC `gcov` binary matching `gfortran`."""
-    for candidate in ("/opt/homebrew/bin/gcov-16", "gcov-16", "gcov-15", "gcov-14", "gcov"):
+    for candidate in (
+        "/opt/homebrew/bin/gcov-16",
+        "gcov-16",
+        "gcov-15",
+        "gcov-14",
+        "gcov",
+    ):
         resolved = shutil.which(candidate)
         if resolved:
             return resolved
     msg = "Could not locate gcov executable on PATH."
     raise RuntimeError(msg)
+
+
+def lcov_extra_args(lcov_bin: str) -> list[str]:
+    """Return lcov 2.x compatibility flags so coverage works without requiring `~/.lcovrc`."""
+    proc = subprocess.run([lcov_bin, "--version"], check=False, capture_output=True, text=True)
+    ver_match = re.search(r"version\s+(\d+)", proc.stdout + proc.stderr, re.IGNORECASE)
+    if ver_match and int(ver_match.group(1)) >= 2:
+        return [
+            "--ignore-errors",
+            "inconsistent,inconsistent,mismatch,mismatch,negative,negative,unused,unused",
+            "--rc",
+            "geninfo_unexecuted_blocks=1",
+        ]
+    return []
 
 
 def measure_doc_coverage(repo_root: pathlib.Path, build_dir: pathlib.Path) -> tuple[float, bool]:
@@ -212,6 +237,7 @@ def measure_test_coverage(repo_root: pathlib.Path, build_dir: pathlib.Path) -> t
         raise RuntimeError(msg)
 
     gcov_tool = find_gcov_executable()
+    extra_args = lcov_extra_args(lcov_bin)
     raw_info = build_dir / "coverage_raw.info"
     filtered_info = build_dir / "coverage.info"
 
@@ -227,8 +253,7 @@ def measure_test_coverage(repo_root: pathlib.Path, build_dir: pathlib.Path) -> t
             gcov_tool,
             "--rc",
             "branch_coverage=1",
-            "--ignore-errors",
-            "inconsistent,mismatch,negative,unused",
+            *extra_args,
             "--quiet",
         ],
         check=True,
@@ -248,15 +273,21 @@ def measure_test_coverage(repo_root: pathlib.Path, build_dir: pathlib.Path) -> t
             str(filtered_info),
             "--rc",
             "branch_coverage=1",
-            "--ignore-errors",
-            "inconsistent,mismatch,negative,unused",
+            *extra_args,
             "--quiet",
         ],
         check=True,
     )
 
     summary_proc = subprocess.run(
-        [lcov_bin, "--summary", str(filtered_info), "--rc", "branch_coverage=1"],
+        [
+            lcov_bin,
+            "--summary",
+            str(filtered_info),
+            "--rc",
+            "branch_coverage=1",
+            *extra_args,
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -277,7 +308,11 @@ def measure_test_coverage(repo_root: pathlib.Path, build_dir: pathlib.Path) -> t
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments for `update_coverage_shields.py`."""
     parser = argparse.ArgumentParser(description="Measure coverage and add/update shields in README.md.")
-    parser.add_argument("kind", choices=("doc", "test"), help="Coverage shield type to compute and update.")
+    parser.add_argument(
+        "kind",
+        choices=("doc", "test"),
+        help="Coverage shield type to compute and update.",
+    )
     parser.add_argument(
         "--readme",
         type=pathlib.Path,
@@ -322,7 +357,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"'{args.kind} coverage' shield in {readme_path.name} is up to date ({format_percentage_text(pct)}).")
 
     if not passed:
-        print(f"FAIL: {args.kind} coverage is {pct:.2f}% (100.0% required).", file=sys.stderr)
+        print(
+            f"FAIL: {args.kind} coverage is {pct:.2f}% (100.0% required).",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

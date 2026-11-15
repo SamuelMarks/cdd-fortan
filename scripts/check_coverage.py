@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Strict 100.0% function, line, and branch coverage verifier using lcov + gcov."""
 
+from __future__ import annotations
+
 import re
 import shutil
 import subprocess
@@ -10,7 +12,13 @@ from pathlib import Path
 
 def find_gcov_tool() -> str:
     """Locate the GCC gcov executable matching gfortran."""
-    for candidate in ("/opt/homebrew/bin/gcov-16", "gcov-16", "gcov-15", "gcov-14", "gcov"):
+    for candidate in (
+        "/opt/homebrew/bin/gcov-16",
+        "gcov-16",
+        "gcov-15",
+        "gcov-14",
+        "gcov",
+    ):
         resolved = shutil.which(candidate)
         if resolved:
             return resolved
@@ -88,7 +96,14 @@ def main() -> int:
     )
 
     summary = subprocess.run(
-        [lcov_bin, "--summary", str(filtered_info), "--rc", "branch_coverage=1", *extra_args],
+        [
+            lcov_bin,
+            "--summary",
+            str(filtered_info),
+            "--rc",
+            "branch_coverage=1",
+            *extra_args,
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -96,11 +111,15 @@ def main() -> int:
     output = summary.stdout + chr(10) + summary.stderr
     print(output.strip())
 
-    metrics = {}
+    metrics: dict[str, tuple[float, int, int]] = {}
     for metric in ("lines", "functions", "branches"):
         match = re.search(rf"{metric}\.+:\s*([0-9.]+)%\s*\((\d+)\s+of\s+(\d+)", output)
         if match:
-            metrics[metric] = (float(match.group(1)), int(match.group(2)), int(match.group(3)))
+            metrics[metric] = (
+                float(match.group(1)),
+                int(match.group(2)),
+                int(match.group(3)),
+            )
 
     failed = False
     for metric in ("functions", "lines", "branches"):
@@ -130,7 +149,10 @@ def main() -> int:
                 print(f"  Uncovered function: {current_sf} -> {fn_name}", file=sys.stderr)
             elif raw_line.startswith("BRDA:") and (raw_line.endswith(",0") or raw_line.endswith(",-")):
                 parts = raw_line[5:].split(",")
-                print(f"  Uncovered branch: {current_sf}:{parts[0]} ({raw_line})", file=sys.stderr)
+                print(
+                    f"  Uncovered branch: {current_sf}:{parts[0]} ({raw_line})",
+                    file=sys.stderr,
+                )
         return 1
 
     print("PASS: 100.0% function, 100.0% line, and 100.0% branch coverage verified.")
